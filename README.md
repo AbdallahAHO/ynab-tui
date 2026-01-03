@@ -1,5 +1,8 @@
 # ynab-tui
 
+[![npm version](https://img.shields.io/npm/v/ynab-tui.svg)](https://www.npmjs.com/package/ynab-tui)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+
 A beautiful terminal interface for [YNAB](https://ynab.com) with AI-powered transaction categorization.
 
 ```
@@ -18,6 +21,19 @@ A beautiful terminal interface for [YNAB](https://ynab.com) with AI-powered tran
 └─────────────────────────────────────────────────────────────────────────┘
 ```
 
+## Quick Start
+
+```bash
+npx ynab-tui
+```
+
+The setup wizard will guide you through configuration on first run.
+
+### Requirements
+
+- **YNAB API Token** - Get from [YNAB Developer Settings](https://app.ynab.com/settings/developer)
+- **OpenRouter API Key** - Sign up at [openrouter.ai](https://openrouter.ai) for AI features
+
 ## Features
 
 ### AI-Powered Categorization
@@ -31,6 +47,7 @@ A beautiful terminal interface for [YNAB](https://ynab.com) with AI-powered tran
 
 - **Auto-Tagging** - AI generates tags for payees (grocery, subscription, etc.)
 - **Display Name Cleanup** - Transform `WHOLEFDS MKT #1234` → `Whole Foods`
+- **Duplicate Detection** - Find and merge similar payees
 - **Default Categories** - Set rules to auto-categorize by payee
 - **YNAB Sync** - Push improved names back to YNAB
 
@@ -46,36 +63,21 @@ A beautiful terminal interface for [YNAB](https://ynab.com) with AI-powered tran
 - **Multi-Select** - Batch operations with `Space` to toggle
 - **Fast & Responsive** - Built with React Ink for smooth TUI
 
-## Installation
-
-```bash
-# Clone the repository
-git clone https://github.com/yourusername/ynab-tui.git
-cd ynab-tui
-
-# Install dependencies
-npm install
-
-# Run the app
-npm run dev
-```
-
 ## Setup
 
-On first run, you'll be guided through setup:
+On first run, you'll be guided through:
 
-1. **YNAB API Token** - Get from [YNAB Developer Settings](https://app.ynab.com/settings/developer)
+1. **YNAB API Token** - Paste your token from YNAB settings
 2. **Budget Selection** - Choose which budget to manage
-3. **AI Model** - Pick from GPT-4.1 Nano to Claude Haiku
-4. **User Context** - Optional info to improve AI accuracy (location, language, etc.)
+3. **OpenRouter API Key** - For AI-powered features
+4. **AI Model** - Pick from GPT-4.1 Nano to Claude Haiku
+5. **User Context** (optional) - Location, language, and other context to improve AI accuracy
 
-Configuration is stored at `~/.config/ynab-tui/config.json`
+Configuration is stored at `~/.config/ynab-tui/`
 
-## Usage
+## Keyboard Shortcuts
 
-### Keyboard Shortcuts
-
-#### Transaction List
+### Transaction List
 | Key | Action |
 |-----|--------|
 | `j/k` or `↑/↓` | Navigate up/down |
@@ -90,7 +92,7 @@ Configuration is stored at `~/.config/ynab-tui/config.json`
 | `?` | Show help |
 | `q` | Quit |
 
-#### Categorization Review
+### Categorization Review
 | Key | Action |
 |-----|--------|
 | `Enter` | Accept AI suggestion |
@@ -100,7 +102,7 @@ Configuration is stored at `~/.config/ynab-tui/config.json`
 | `m` | Edit memo |
 | `Esc` | Exit review |
 
-#### Payee Manager
+### Payee Manager
 | Key | Action |
 |-----|--------|
 | `j/k` | Navigate payees |
@@ -108,16 +110,19 @@ Configuration is stored at `~/.config/ynab-tui/config.json`
 | `Space` | Toggle selection |
 | `t` | AI tag selected payees |
 | `T` | AI tag all untagged |
+| `d` | Find duplicate payees |
+| `R` | Review AI category suggestions |
 | `c` | Set default category |
 | `/` | Search payees |
 | `Esc` | Go back |
 
-### Categorization Modes
+## Categorization Modes
 
-#### Interactive Review
-```bash
-# Press Enter on a transaction, then review the AI suggestion:
+### Interactive Review
 
+Press `Enter` on a transaction to review the AI suggestion:
+
+```
 ┌─────────────────────────────────────────────────────────────────┐
 │  Categorize Transaction                                         │
 ├─────────────────────────────────────────────────────────────────┤
@@ -134,8 +139,9 @@ Configuration is stored at `~/.config/ynab-tui/config.json`
 └─────────────────────────────────────────────────────────────────┘
 ```
 
-#### YOLO Mode
-Press `y` to auto-categorize all transactions with confidence above your threshold (default 80%):
+### YOLO Mode
+
+Press `y` to auto-categorize all transactions above your confidence threshold:
 
 ```
 YOLO Mode: Categorizing 23 transactions...
@@ -147,9 +153,7 @@ Applied: Dining Out → 3 transactions
 Skipped: 2 (low confidence)
 ```
 
-## Configuration
-
-### AI Models
+## AI Models
 
 | Model | Speed | Cost | Best For |
 |-------|-------|------|----------|
@@ -159,26 +163,18 @@ Skipped: 2 (low confidence)
 | Gemini 3 Flash | ⚡⚡ | $$ | Newest, configurable depth |
 | Claude Haiku 4.5 | ⚡ | $$$ | Premium accuracy |
 
-### Thresholds
+## User Context
 
-- **Confidence Threshold** (0.8) - Minimum confidence to show as primary suggestion
-- **YOLO Threshold** (0.8) - Minimum confidence for auto-apply in YOLO mode
+Improve AI accuracy by providing context during setup:
 
-### User Context
-
-Improve AI accuracy by providing context:
-
-```json
-{
-  "userContext": {
-    "location": { "country": "Germany", "city": "Hamburg" },
-    "language": "German, English",
-    "partner": { "name": "Sarah", "context": "Split groceries 50/50" }
-  }
-}
-```
+- **Location** - Country/city helps identify local merchants
+- **Language** - For transactions in non-English
+- **Partner Info** - For shared expenses ("Split groceries 50/50 with Sarah")
+- **Account Context** - Describe each account's purpose
 
 ## Data Storage
+
+All data is stored locally:
 
 | File | Purpose |
 |------|---------|
@@ -186,63 +182,33 @@ Improve AI accuracy by providing context:
 | `~/.config/ynab-tui/payees.json` | Payee rules & tags |
 | `~/.config/ynab-tui/ai-cache.json` | Cached AI responses (30-day TTL) |
 
+## Global Installation
+
+```bash
+npm install -g ynab-tui
+ynab-tui
+```
+
 ## Development
 
 ```bash
-# Development mode with hot reload
+git clone https://github.com/AbdallahAHO/ynab-tui.git
+cd ynab-tui
+npm install
 npm run dev
-
-# Type checking
-npm run typecheck
-
-# Build for production
-npm run build
-
-# Run tests
-npm test
-```
-
-### Project Structure
-
-```
-src/
-├── app.tsx                 # Main app component & routing
-├── cli.tsx                 # Entry point, setup flow
-├── categorization/         # AI categorization engine
-├── categories/             # Category picker UI
-├── config/                 # Configuration & setup wizard
-├── navigation/             # Screen navigation state
-├── payees/                 # Payee management system
-├── settings/               # Settings screen
-├── shared/                 # Shared utilities & components
-│   ├── ai-cache.ts         # AI response caching
-│   ├── ynab-client.ts      # YNAB API wrapper
-│   └── components/         # Reusable UI components
-└── transactions/           # Transaction list & editing
 ```
 
 ## Tech Stack
 
-- **[React](https://react.dev)** - UI components
-- **[Ink](https://github.com/vadimdemedes/ink)** - React for terminal
-- **[Jotai](https://jotai.org)** - Atomic state management
-- **[Vercel AI SDK](https://sdk.vercel.ai)** - AI integration
-- **[OpenRouter](https://openrouter.ai)** - Multi-model AI gateway
-- **[YNAB API](https://api.ynab.com)** - Budget data
-- **[Zod](https://zod.dev)** - Schema validation
-
-## Requirements
-
-- Node.js 18+
-- YNAB account with API access
-- OpenRouter API key
+- [React](https://react.dev) + [Ink](https://github.com/vadimdemedes/ink) - Terminal UI
+- [Jotai](https://jotai.org) - State management
+- [Vercel AI SDK](https://sdk.vercel.ai) + [OpenRouter](https://openrouter.ai) - AI integration
+- [YNAB API](https://api.ynab.com) - Budget data
 
 ## License
 
-MIT
+MIT - See [LICENSE](LICENSE) for details.
 
 ---
 
-<p align="center">
-  Built with terminal love by developers who budget
-</p>
+Built by [Abdallah](https://abdallahaho.com)

@@ -6,11 +6,42 @@
   "bin": {
     "ynab-tui": "./dist/cli.js"
   },
+  "files": [
+    "dist"
+  ],
   "scripts": {
     "dev": "tsx src/cli.tsx",
     "build": "tsup",
     "test": "vitest",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "prepublishOnly": "npm run build"
+  },
+  "keywords": [
+    "ynab",
+    "budget",
+    "budgeting",
+    "finance",
+    "tui",
+    "cli",
+    "terminal",
+    "ai",
+    "categorization",
+    "openrouter",
+    "ink",
+    "react"
+  ],
+  "author": "Abdallah <contact@abdallahaho.com>",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/AbdallahAHO/ynab-tui.git"
+  },
+  "bugs": {
+    "url": "https://github.com/AbdallahAHO/ynab-tui/issues"
+  },
+  "homepage": "https://github.com/AbdallahAHO/ynab-tui#readme",
+  "publishConfig": {
+    "access": "public"
   },
   "dependencies": {
     "@clack/prompts": "^0.9.1",
