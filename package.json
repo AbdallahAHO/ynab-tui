@@ -1,10 +1,10 @@
 {
   "name": "ynab-tui",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Interactive TUI for YNAB with AI-powered transaction categorization",
   "type": "module",
   "bin": {
-    "ynab-tui": "./dist/cli.js"
+    "ynab-tui": "dist/cli.js"
   },
   "files": [
     "dist"
