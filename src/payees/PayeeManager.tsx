@@ -12,11 +12,21 @@ import {
   checkedPayeeCountAtom,
   untaggedPayeesAtom,
 } from './payee-atoms.js'
-import { syncPayeesWithYnab, getAllPayeeRules, setPayeeCategory, bulkTagPayeesWithAI } from './payee-service.js'
+import {
+  syncPayeesWithYnab,
+  getAllPayeeRules,
+  setPayeeCategory,
+  bulkTagPayeesWithAI,
+  bulkCategorizePayeesWithAI,
+  bulkSyncPayeesToYnab,
+} from './payee-service.js'
 import { PayeeEditor } from './PayeeEditor.js'
 import { PayeeReview } from './PayeeReview.js'
+import { PayeeCategoryReview } from './PayeeCategoryReview.js'
+import { DuplicateReview } from './DuplicateReview.js'
 import { CategoryPicker } from '../categories/CategoryPicker.js'
 import { useListNavigation } from '../shared/hooks/useListNavigation.js'
+import { findDuplicateGroups, type DuplicateGroup } from './duplicate-detection.js'
 import type { YnabClient, Category, CategoryGroupWithCategories } from '../shared/ynab-client.js'
 import type { AppConfig } from '../config/config-types.js'
 import type { PayeeRule } from './payee-types.js'
@@ -38,13 +48,23 @@ export const PayeeManager = ({ ynabClient, config }: PayeeManagerProps) => {
   const checkedCount = useAtomValue(checkedPayeeCountAtom)
   const untaggedPayees = useAtomValue(untaggedPayeesAtom)
 
-  const [mode, setMode] = useState<'list' | 'edit' | 'category' | 'tagging' | 'review'>('list')
+  type Mode = 'list' | 'edit' | 'category' | 'tagging' | 'review' | 'categorizing' | 'categoryReview' | 'duplicates' | 'syncing'
+  const [mode, setMode] = useState<Mode>('list')
   const [categories, setCategories] = useState<Category[]>([])
   const [categoryGroups, setCategoryGroups] = useState<CategoryGroupWithCategories[]>([])
   const [isSearching, setIsSearching] = useState(false)
   const [taggingProgress, setTaggingProgress] = useState({ current: 0, total: 0 })
   const [payeesToReview, setPayeesToReview] = useState<PayeeRule[]>([])
   const [reviewIndex, setReviewIndex] = useState(0)
+  const [duplicateGroups, setDuplicateGroups] = useState<DuplicateGroup[]>([])
+  const [syncProgress, setSyncProgress] = useState({ current: 0, total: 0 })
+
+  // Reset mode to list if we're in review mode but have no payees to review
+  useEffect(() => {
+    if (mode === 'review' && payeesToReview.length === 0) {
+      setMode('list')
+    }
+  }, [mode, payeesToReview.length])
 
   // Load data on mount
   useEffect(() => {
@@ -53,6 +73,7 @@ export const PayeeManager = ({ ynabClient, config }: PayeeManagerProps) => {
         getAllPayeeRules(),
         ynabClient.getCategories(),
       ])
+      console.error('[PayeeManager] Loaded', loadedRules.length, 'payee rules')
       setRules(loadedRules)
       setCategoryGroups(cats)
 
@@ -79,15 +100,22 @@ export const PayeeManager = ({ ynabClient, config }: PayeeManagerProps) => {
   const selectedPayee: PayeeRule | null = filteredPayees[selectedIndex] ?? null
 
   const handleSync = async () => {
+    if (syncStatus === 'syncing') return // Prevent double-sync
+
     setSyncStatus('syncing')
     try {
       const ynabPayees = await ynabClient.getPayees()
-      const result = await syncPayeesWithYnab(ynabPayees)
+      await syncPayeesWithYnab(ynabPayees)
       const updatedRules = await getAllPayeeRules()
       setRules(updatedRules)
       setSyncStatus('done')
-      setTimeout(() => setSyncStatus('idle'), 2000)
-    } catch {
+
+      // Reset to idle after showing success
+      const timer = setTimeout(() => setSyncStatus('idle'), 2000)
+      return () => clearTimeout(timer)
+    } catch (err) {
+      // Log error for debugging
+      console.error('Sync failed:', err)
       setSyncStatus('idle')
     }
   }
@@ -120,7 +148,11 @@ export const PayeeManager = ({ ynabClient, config }: PayeeManagerProps) => {
     setTaggingProgress({ current: 0, total: payees.length })
 
     await bulkTagPayeesWithAI(
-      { openRouterApiKey: config.ai.openRouterApiKey, model: config.ai.model },
+      {
+        openRouterApiKey: config.ai.openRouterApiKey,
+        model: config.ai.model,
+        userContext: config.userContext,
+      },
       payees,
       categories,
       (current) => setTaggingProgress((p) => ({ ...p, current }))
@@ -139,11 +171,75 @@ export const PayeeManager = ({ ynabClient, config }: PayeeManagerProps) => {
     setMode('review')
   }
 
+  const handleBulkCategorize = async () => {
+    // Get payees without default categories
+    const uncategorized = rules.filter((r) => !r.defaultCategoryId && !r.duplicateOf)
+    if (uncategorized.length === 0) return
+
+    setMode('categorizing')
+    setTaggingProgress({ current: 0, total: uncategorized.length })
+
+    const payeesWithSuggestions = await bulkCategorizePayeesWithAI(
+      {
+        openRouterApiKey: config.ai.openRouterApiKey,
+        model: config.ai.model,
+        userContext: config.userContext,
+      },
+      uncategorized,
+      categories,
+      (current) => setTaggingProgress((p) => ({ ...p, current }))
+    )
+
+    const updatedRules = await getAllPayeeRules()
+    setRules(updatedRules)
+
+    if (payeesWithSuggestions.length > 0) {
+      // Get fresh data for review
+      const toReview = updatedRules.filter((r) =>
+        payeesWithSuggestions.some((p) => p.payeeId === r.payeeId)
+      )
+      setPayeesToReview(toReview)
+      setMode('categoryReview')
+    } else {
+      setMode('list')
+    }
+  }
+
+  const handleFindDuplicates = () => {
+    const groups = findDuplicateGroups(rules.filter((r) => !r.duplicateOf))
+    setDuplicateGroups(groups)
+    setMode('duplicates')
+  }
+
+  const handleBulkSyncToYnab = async () => {
+    const toSync = rules.filter(
+      (r) => r.displayName !== r.payeeName && !r.syncedToYnab && !r.duplicateOf
+    )
+    if (toSync.length === 0) return
+
+    setMode('syncing')
+    setSyncProgress({ current: 0, total: toSync.length })
+
+    await bulkSyncPayeesToYnab(
+      rules,
+      ynabClient,
+      (current) => setSyncProgress((p) => ({ ...p, current }))
+    )
+
+    const updatedRules = await getAllPayeeRules()
+    setRules(updatedRules)
+    setMode('list')
+  }
+
   useInput((input, key) => {
     if (mode === 'category') return
     if (mode === 'edit') return
     if (mode === 'tagging') return
     if (mode === 'review') return
+    if (mode === 'categorizing') return
+    if (mode === 'categoryReview') return
+    if (mode === 'duplicates') return
+    if (mode === 'syncing') return
 
     if (key.escape) {
       if (isSearching) {
@@ -206,6 +302,24 @@ export const PayeeManager = ({ ynabClient, config }: PayeeManagerProps) => {
       handleBulkTag(untaggedPayees)
       return
     }
+
+    // 'C' to auto-categorize uncategorized payees
+    if (input === 'C') {
+      handleBulkCategorize()
+      return
+    }
+
+    // 'D' to find and review duplicates
+    if (input === 'D') {
+      handleFindDuplicates()
+      return
+    }
+
+    // 'S' to bulk sync all to YNAB
+    if (input === 'S') {
+      handleBulkSyncToYnab()
+      return
+    }
   })
 
   if (mode === 'category') {
@@ -247,6 +361,67 @@ export const PayeeManager = ({ ynabClient, config }: PayeeManagerProps) => {
         </Box>
         <Box marginTop={1}>
           <Text dimColor>Please wait while AI generates tags for your payees...</Text>
+        </Box>
+      </Box>
+    )
+  }
+
+  if (mode === 'categorizing') {
+    return (
+      <Box flexDirection="column" padding={1}>
+        <Text bold color="cyan">AI Categorizing Payees...</Text>
+        <Box marginTop={1}>
+          <Text>
+            Progress: {taggingProgress.current}/{taggingProgress.total}
+          </Text>
+        </Box>
+        <Box marginTop={1}>
+          <Text dimColor>Please wait while AI suggests categories for your payees...</Text>
+        </Box>
+      </Box>
+    )
+  }
+
+  if (mode === 'categoryReview' && payeesToReview.length > 0) {
+    return (
+      <PayeeCategoryReview
+        payees={payeesToReview}
+        categories={categories}
+        categoryGroups={categoryGroups}
+        onFinish={async () => {
+          const updatedRules = await getAllPayeeRules()
+          setRules(updatedRules)
+          setMode('list')
+        }}
+      />
+    )
+  }
+
+  if (mode === 'duplicates') {
+    return (
+      <DuplicateReview
+        groups={duplicateGroups}
+        ynabClient={ynabClient}
+        onFinish={async () => {
+          const updatedRules = await getAllPayeeRules()
+          setRules(updatedRules)
+          setMode('list')
+        }}
+      />
+    )
+  }
+
+  if (mode === 'syncing') {
+    return (
+      <Box flexDirection="column" padding={1}>
+        <Text bold color="cyan">Syncing to YNAB...</Text>
+        <Box marginTop={1}>
+          <Text>
+            Progress: {syncProgress.current}/{syncProgress.total}
+          </Text>
+        </Box>
+        <Box marginTop={1}>
+          <Text dimColor>Renaming payees in YNAB to match your display names...</Text>
         </Box>
       </Box>
     )
@@ -362,7 +537,10 @@ export const PayeeManager = ({ ynabClient, config }: PayeeManagerProps) => {
           [j/k] nav  [Space] select  [Enter] edit  [c] category  [P] sync  [/] search
         </Text>
         <Text dimColor>
-          [t] tag selected  [T] tag all untagged  [Esc] {checkedCount > 0 ? 'clear' : 'back'}
+          [t] tag selected  [T] tag all  [C] categorize  [D] duplicates  [S] sync all to YNAB
+        </Text>
+        <Text dimColor>
+          [Esc] {checkedCount > 0 ? 'clear selection' : 'back'}
         </Text>
       </Box>
     </Box>

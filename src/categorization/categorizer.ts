@@ -1,18 +1,14 @@
 import { generateObject } from 'ai'
 import { createOpenRouter } from '@openrouter/ai-sdk-provider'
-import type { TransactionDetail, Category } from '../shared/ynab-client.js'
-import { categorizationResultSchema, type CategorizationResult, type PayeePattern } from './categorization-types.js'
-import { formatPatternsForPrompt } from './history-analyzer.js'
-import type { PayeeRule } from '../payees/payee-types.js'
+import type { TransactionDetail } from '../shared/ynab-client.js'
+import { categorizationResultSchema, type CategorizationResult } from './categorization-types.js'
 import { normalizePayeeName } from '../payees/payee-types.js'
-import type { UserContext } from '../config/config-types.js'
 import { generateCacheKey, getCachedResponse, setCachedResponse } from '../shared/ai-cache.js'
+import { type AIContext, formatContextForPrompt, getAccountInfo } from '../shared/ai-context.js'
 
 interface CategorizerConfig {
   openRouterApiKey: string
   model: string
-  payeeRules?: PayeeRule[]
-  userContext?: UserContext
 }
 
 interface Categorizer {
@@ -21,55 +17,42 @@ interface Categorizer {
 }
 
 /**
- * Creates an AI categorizer with historical context.
+ * Creates an AI categorizer with rich context from user settings, accounts, and history.
  *
  * @example
- * const categorizer = createCategorizer(config, categories, patterns)
+ * const ctx = buildAIContext({ userContext, accounts, payeeRules, categories, historicalPatterns })
+ * const categorizer = createCategorizer(config, ctx)
  * const result = await categorizer.categorize(transaction)
- * // => { categoryId: 'cat-1', categoryName: 'Groceries', confidence: 0.92, ... }
  */
 export const createCategorizer = (
   config: CategorizerConfig,
-  categories: Category[],
-  historicalPatterns: PayeePattern[]
+  aiContext: AIContext
 ): Categorizer => {
   const openrouter = createOpenRouter({ apiKey: config.openRouterApiKey })
   const model = openrouter(config.model)
-  const payeeRules = config.payeeRules ?? []
 
-  const categoryList = categories
-    .map((c) => `- ${c.id}: ${c.name}`)
-    .join('\n')
+  // Build system prompt with all context
+  const contextStr = formatContextForPrompt(aiContext, {
+    includeUser: true,
+    includeAccounts: true,
+    includePayees: true,
+    includeCategories: true,
+    includePatterns: true,
+    patternLimit: 50,
+  })
 
-  const patternsContext = formatPatternsForPrompt(historicalPatterns)
+  const systemPrompt = `You are a YNAB transaction categorizer. Assign the most appropriate category to transactions based on payee name, memo, amount, and account context.
 
-  // Build user context section for prompt
-  const userContextStr = config.userContext
-    ? `
-## User Context
-${config.userContext.location ? `- Location: ${config.userContext.location.city}, ${config.userContext.location.country}` : ''}
-${config.userContext.language ? `- Languages: ${config.userContext.language}` : ''}
-${config.userContext.partner ? `- Partner: ${config.userContext.partner.name} (${config.userContext.partner.context})` : ''}
-${config.userContext.transactionSources ? `- Transaction sources: ${config.userContext.transactionSources}` : ''}
-`.trim()
-    : ''
-
-  const systemPrompt = `You are a YNAB transaction categorizer. Assign the most appropriate category to transactions based on payee name, memo, and amount.
-
-## Available Categories
-${categoryList}
-
-## Historical Patterns (payee → most common category)
-${patternsContext || 'No historical data available yet.'}
-${userContextStr}
+${contextStr}
 
 ## Category Rules
 1. ONLY use category IDs from the list above - never make up IDs
 2. Match payee patterns first - if we've seen this payee before, use the historical category
-3. Consider the amount context (restaurants vs groceries, etc.)
-4. Use memo hints if available
-5. For uncertain matches, provide lower confidence and good alternatives
-6. Confidence should reflect how certain you are:
+3. Consider the account context - personal spending vs joint vs business accounts
+4. Consider the amount context (restaurants vs groceries, etc.)
+5. Use memo hints if available
+6. For uncertain matches, provide lower confidence and good alternatives
+7. Confidence should reflect how certain you are:
    - 0.9+ = Very confident, clear pattern match
    - 0.7-0.9 = Reasonably confident
    - 0.5-0.7 = Educated guess
@@ -82,16 +65,18 @@ If the transaction has NO memo (indicated as "Memo: [empty]"), suggest two memo 
 
 If the transaction already HAS a memo, do NOT include suggestedMemo in your response.`
 
-  // Find a matching payee rule for instant categorization
-  const findPayeeRule = (payeeName: string): PayeeRule | undefined => {
+  // Find a matching payee rule for instant categorization (no AI needed)
+  const findPayeeRule = (payeeName: string) => {
     const normalized = normalizePayeeName(payeeName)
-    return payeeRules.find((r) => r.normalizedName === normalized && r.defaultCategoryId)
+    return aiContext.payees.rules.find(
+      (r) => r.normalizedName === normalized && r.defaultCategoryId
+    )
   }
 
   const categorize = async (
     transaction: TransactionDetail
   ): Promise<CategorizationResult> => {
-    // Check payee rules first for instant categorization (no AI needed)
+    // Check payee rules first for instant categorization
     const payeeRule = findPayeeRule(transaction.payee_name ?? '')
     if (payeeRule && payeeRule.defaultCategoryId && payeeRule.defaultCategoryName) {
       return {
@@ -107,7 +92,7 @@ If the transaction already HAS a memo, do NOT include suggestedMemo in your resp
     const amountStr = amount < 0 ? `expense of ${Math.abs(amount).toFixed(2)}` : `income of ${amount.toFixed(2)}`
     const hasMemo = Boolean(transaction.memo && transaction.memo.trim())
 
-    // Check cache (only for transactions without memos - memos add unique context)
+    // Check cache (only for transactions without memos)
     const cacheKey = !hasMemo
       ? generateCacheKey('categorize', transaction.payee_name ?? '', amount < 0 ? 'expense' : 'income', config.model)
       : null
@@ -116,6 +101,12 @@ If the transaction already HAS a memo, do NOT include suggestedMemo in your resp
       const cached = await getCachedResponse<CategorizationResult>(cacheKey)
       if (cached) return cached
     }
+
+    // Build transaction prompt with account context
+    const accountInfo = getAccountInfo(transaction.account_id, aiContext)
+    const accountLine = accountInfo
+      ? `Account: ${accountInfo.name}${accountInfo.userContext ? ` (${accountInfo.userContext})` : ''}`
+      : ''
 
     const { object } = await generateObject({
       model,
@@ -127,15 +118,15 @@ If the transaction already HAS a memo, do NOT include suggestedMemo in your resp
 Payee: ${transaction.payee_name || 'Unknown'}
 Amount: ${amountStr}
 Memo: ${hasMemo ? transaction.memo : '[empty]'}
-Date: ${transaction.date}`,
-      temperature: 0.3, // Lower for consistency
+Date: ${transaction.date}
+${accountLine}`.trim(),
+      temperature: 0.3,
     })
 
     // Validate category ID exists
-    const validCategoryIds = new Set(categories.map((c) => c.id))
+    const validCategoryIds = new Set(aiContext.categories.list.map((c) => c.id))
     if (!validCategoryIds.has(object.categoryId)) {
-      // Fallback: find category by name
-      const matchByName = categories.find(
+      const matchByName = aiContext.categories.list.find(
         (c) => c.name.toLowerCase() === object.categoryName.toLowerCase()
       )
       if (matchByName) {
@@ -143,7 +134,7 @@ Date: ${transaction.date}`,
       }
     }
 
-    // Cache the result (only for no-memo transactions)
+    // Cache the result
     if (cacheKey) {
       await setCachedResponse(cacheKey, object)
     }
@@ -154,7 +145,6 @@ Date: ${transaction.date}`,
   const categorizeBatch = async (
     transactions: TransactionDetail[]
   ): Promise<Map<string, CategorizationResult>> => {
-    // Process in parallel with concurrency limit
     const results = new Map<string, CategorizationResult>()
     const concurrency = 3
 
@@ -166,7 +156,6 @@ Date: ${transaction.date}`,
             const result = await categorize(tx)
             return [tx.id, result] as const
           } catch (error) {
-            // Return a low-confidence fallback on error
             const fallback: CategorizationResult = {
               categoryId: '',
               categoryName: 'Error',

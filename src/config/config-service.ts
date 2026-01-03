@@ -9,6 +9,21 @@ const CONFIG_DIR = join(homedir(), '.config', 'ynab-tui')
 const CONFIG_FILE = join(CONFIG_DIR, 'config.json')
 const PAYEES_FILE = join(CONFIG_DIR, 'payees.json')
 
+// Simple mutex for payees file operations
+let payeesLock: Promise<void> = Promise.resolve()
+
+const withPayeesLock = async <T>(fn: () => Promise<T>): Promise<T> => {
+  const release = payeesLock
+  let resolve: () => void
+  payeesLock = new Promise((r) => { resolve = r })
+  await release
+  try {
+    return await fn()
+  } finally {
+    resolve!()
+  }
+}
+
 export const getConfigPath = () => CONFIG_FILE
 
 export const loadConfig = async (): Promise<AppConfig | null> => {
@@ -52,10 +67,14 @@ export const updateConfig = async (
 
 export const loadPayeeRules = async (): Promise<PayeeRule[]> => {
   try {
-    if (!existsSync(PAYEES_FILE)) return []
+    if (!existsSync(PAYEES_FILE)) {
+      return []
+    }
     const content = await readFile(PAYEES_FILE, 'utf-8')
-    return JSON.parse(content) as PayeeRule[]
-  } catch {
+    const rules = JSON.parse(content) as PayeeRule[]
+    return rules
+  } catch (err) {
+    console.error('[loadPayeeRules] Error loading payees:', err)
     return []
   }
 }
@@ -63,4 +82,18 @@ export const loadPayeeRules = async (): Promise<PayeeRule[]> => {
 export const savePayeeRules = async (rules: PayeeRule[]): Promise<void> => {
   await mkdir(CONFIG_DIR, { recursive: true })
   await writeFile(PAYEES_FILE, JSON.stringify(rules, null, 2))
+}
+
+/**
+ * Atomic read-modify-write for payee rules
+ * Prevents race conditions when multiple updates run concurrently
+ */
+export const updatePayeeRulesAtomic = async (
+  updater: (rules: PayeeRule[]) => PayeeRule[]
+): Promise<void> => {
+  await withPayeesLock(async () => {
+    const rules = await loadPayeeRules()
+    const updated = updater(rules)
+    await savePayeeRules(updated)
+  })
 }

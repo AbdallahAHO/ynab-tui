@@ -2,13 +2,15 @@ import { generateObject } from 'ai'
 import { createOpenRouter } from '@openrouter/ai-sdk-provider'
 import { z } from 'zod'
 import type { Payee, Category } from '../shared/ynab-client.js'
-import { loadPayeeRules, savePayeeRules } from '../config/config-service.js'
+import { loadPayeeRules, savePayeeRules, updatePayeeRulesAtomic } from '../config/config-service.js'
 import { type PayeeRule, createEmptyPayeeRule, normalizePayeeName } from './payee-types.js'
 import { generateCacheKey, getCachedResponse, setCachedResponse } from '../shared/ai-cache.js'
+import type { UserContext } from '../config/config-types.js'
 
 interface PayeeServiceConfig {
   openRouterApiKey: string
   model: string
+  userContext?: UserContext
 }
 
 export interface SyncResult {
@@ -77,19 +79,18 @@ export const findPayeeRule = async (
 }
 
 /**
- * Updates a payee rule and saves
+ * Updates a payee rule atomically (thread-safe)
  */
 export const updatePayeeRule = async (
   payeeId: string,
   updates: Partial<PayeeRule>
 ): Promise<void> => {
-  const rules = await loadPayeeRules()
-  const index = rules.findIndex((r) => r.payeeId === payeeId)
-
-  if (index === -1) return
-
-  rules[index] = { ...rules[index], ...updates }
-  await savePayeeRules(rules)
+  await updatePayeeRulesAtomic((rules) => {
+    const index = rules.findIndex((r) => r.payeeId === payeeId)
+    if (index === -1) return rules
+    rules[index] = { ...rules[index], ...updates }
+    return rules
+  })
 }
 
 /**
@@ -104,28 +105,29 @@ const payeeImprovementSchema = z.object({
   displayName: z.string().describe('Clean, human-readable payee name'),
   tags: z.array(z.string()).describe('Categorization tags like grocery, subscription, utility'),
   suggestedCategoryName: z.string().optional().describe('Suggested category name if obvious'),
+  context: z.string().optional().describe('Brief description of the payee (e.g., "German discount supermarket chain")'),
 })
 
+export interface PayeeImprovement {
+  displayName: string
+  tags: string[]
+  suggestedCategoryName?: string
+  suggestedCategoryId?: string
+  context?: string
+}
+
 /**
- * Uses AI to suggest an improved name and tags for a payee
+ * Uses AI to suggest an improved name, tags, category, and context for a payee
  * Results are cached for 30 days to save API costs
  */
 export const improvePayeeWithAI = async (
   config: PayeeServiceConfig,
   payeeName: string,
   categories: Category[]
-): Promise<{
-  displayName: string
-  tags: string[]
-  suggestedCategoryName?: string
-}> => {
+): Promise<PayeeImprovement> => {
   // Check cache first
-  const cacheKey = generateCacheKey('payee-improve', payeeName, config.model)
-  const cached = await getCachedResponse<{
-    displayName: string
-    tags: string[]
-    suggestedCategoryName?: string
-  }>(cacheKey)
+  const cacheKey = generateCacheKey('payee-improve-v2', payeeName, config.model)
+  const cached = await getCachedResponse<PayeeImprovement>(cacheKey)
 
   if (cached) {
     return cached
@@ -136,25 +138,53 @@ export const improvePayeeWithAI = async (
 
   const categoryNames = categories.map((c) => c.name).join(', ')
 
+  // Build user context section for prompt
+  const userContextStr = config.userContext
+    ? `
+User Context:
+${config.userContext.location ? `- Location: ${config.userContext.location.city}, ${config.userContext.location.country}` : ''}
+${config.userContext.language ? `- Languages: ${config.userContext.language}` : ''}
+`.trim()
+    : ''
+
   const { object } = await generateObject({
     model,
     schema: payeeImprovementSchema,
     schemaName: 'PayeeImprovement',
-    schemaDescription: 'Improved payee name and tags',
+    schemaDescription: 'Improved payee name, tags, category suggestion, and context',
     system: `You are a payee name improver. Given a raw payee name from a bank transaction, suggest:
 1. A clean, human-readable display name (remove transaction codes, standardize capitalization)
 2. 1-3 relevant tags for categorization
-3. If obvious, the category this payee likely belongs to
-
+3. If obvious, the category this payee likely belongs to (must match exactly from the available categories)
+4. A brief context description of what this payee is (e.g., "German discount supermarket chain", "Food delivery service")
+${userContextStr ? `\n${userContextStr}` : ''}
 Available categories: ${categoryNames}`,
     prompt: `Improve this payee name: "${payeeName}"`,
     temperature: 0.3,
   })
 
-  // Cache the result
-  await setCachedResponse(cacheKey, object)
+  // Match suggested category name to ID
+  const result: PayeeImprovement = {
+    displayName: object.displayName,
+    tags: object.tags,
+    suggestedCategoryName: object.suggestedCategoryName,
+    context: object.context,
+  }
 
-  return object
+  if (object.suggestedCategoryName) {
+    const matchedCategory = categories.find(
+      (c) => c.name.toLowerCase() === object.suggestedCategoryName?.toLowerCase()
+    )
+    if (matchedCategory) {
+      result.suggestedCategoryId = matchedCategory.id
+      result.suggestedCategoryName = matchedCategory.name // Use exact casing
+    }
+  }
+
+  // Cache the result
+  await setCachedResponse(cacheKey, result)
+
+  return result
 }
 
 /**
@@ -213,6 +243,7 @@ export const setPayeeCategory = async (
 
 /**
  * Bulk AI tagging for selected payees with progress callback
+ * Now also saves context and suggested category
  */
 export const bulkTagPayeesWithAI = async (
   config: PayeeServiceConfig,
@@ -220,25 +251,93 @@ export const bulkTagPayeesWithAI = async (
   categories: Category[],
   onProgress: (current: number) => void
 ): Promise<void> => {
-  const concurrency = 3
-
-  for (let i = 0; i < payees.length; i += concurrency) {
-    const batch = payees.slice(i, i + concurrency)
-
-    await Promise.all(
-      batch.map(async (payee) => {
-        try {
-          const improvement = await improvePayeeWithAI(config, payee.payeeName, categories)
-          await updatePayeeRule(payee.payeeId, {
-            displayName: improvement.displayName,
-            aiTags: improvement.tags,
-          })
-        } catch {
-          // Skip on error
-        }
+  for (const payee of payees) {
+    try {
+      const improvement = await improvePayeeWithAI(config, payee.payeeName, categories)
+      await updatePayeeRule(payee.payeeId, {
+        displayName: improvement.displayName,
+        aiTags: improvement.tags,
+        aiContext: improvement.context,
+        suggestedCategoryId: improvement.suggestedCategoryId,
+        suggestedCategoryName: improvement.suggestedCategoryName,
       })
-    )
-
-    onProgress(Math.min(i + concurrency, payees.length))
+    } catch {
+      // Skip on error
+    }
+    onProgress(payees.indexOf(payee) + 1)
   }
+}
+
+/**
+ * Bulk AI categorization for payees without default categories
+ * Returns payees that got suggestions for review
+ */
+export const bulkCategorizePayeesWithAI = async (
+  config: PayeeServiceConfig,
+  payees: PayeeRule[],
+  categories: Category[],
+  onProgress: (current: number) => void
+): Promise<PayeeRule[]> => {
+  const payeesWithSuggestions: PayeeRule[] = []
+
+  for (const payee of payees) {
+    try {
+      const improvement = await improvePayeeWithAI(config, payee.payeeName, categories)
+
+      const updates: Partial<PayeeRule> = {
+        displayName: improvement.displayName,
+        aiTags: improvement.tags,
+        aiContext: improvement.context,
+      }
+
+      if (improvement.suggestedCategoryId) {
+        updates.suggestedCategoryId = improvement.suggestedCategoryId
+        updates.suggestedCategoryName = improvement.suggestedCategoryName
+      }
+
+      await updatePayeeRule(payee.payeeId, updates)
+
+      if (improvement.suggestedCategoryId) {
+        payeesWithSuggestions.push({
+          ...payee,
+          ...updates,
+        } as PayeeRule)
+      }
+    } catch {
+      // Skip on error
+    }
+    onProgress(payees.indexOf(payee) + 1)
+  }
+
+  return payeesWithSuggestions
+}
+
+/**
+ * Bulk sync all payees to YNAB (rename displayNames)
+ */
+export const bulkSyncPayeesToYnab = async (
+  payees: PayeeRule[],
+  ynabClient: { updatePayee: (id: string, name: string) => Promise<void> },
+  onProgress: (current: number) => void
+): Promise<number> => {
+  const toSync = payees.filter(
+    (p) => p.displayName !== p.payeeName && !p.syncedToYnab && !p.duplicateOf
+  )
+
+  let syncedCount = 0
+
+  for (const payee of toSync) {
+    try {
+      await ynabClient.updatePayee(payee.payeeId, payee.displayName)
+      await updatePayeeRule(payee.payeeId, { syncedToYnab: true })
+      syncedCount++
+    } catch {
+      // Skip on error
+    }
+    onProgress(toSync.indexOf(payee) + 1)
+    // Small delay to avoid rate limiting
+    await new Promise((r) => setTimeout(r, 100))
+  }
+
+  return syncedCount
 }

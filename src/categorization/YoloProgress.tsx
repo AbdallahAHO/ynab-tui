@@ -15,11 +15,13 @@ import {
   categorizationResultsAtom,
   categorizationQueueAtom,
 } from './categorization-atoms.js'
-import { transactionsAtom, categoryGroupsAtom } from '../transactions/transaction-atoms.js'
+import { transactionsAtom, categoryGroupsAtom, accountsAtom } from '../transactions/transaction-atoms.js'
 import { navigateAtom, goBackAtom } from '../navigation/navigation-atoms.js'
 import { createCategorizer } from './categorizer.js'
 import { buildPayeePatterns } from './history-analyzer.js'
 import { flattenCategories, formatAmount, type YnabClient } from '../shared/ynab-client.js'
+import { buildAIContext } from '../shared/ai-context.js'
+import { getAllPayeeRules } from '../payees/payee-service.js'
 import type { AppConfig } from '../config/config-types.js'
 
 interface YoloProgressProps {
@@ -39,6 +41,7 @@ export const YoloProgress = ({
 
   const transactions = useAtomValue(transactionsAtom)
   const categoryGroups = useAtomValue(categoryGroupsAtom)
+  const accounts = useAtomValue(accountsAtom)
   const categories = flattenCategories(categoryGroups)
 
   const [progressItems, setProgressItems] = useAtom(yoloProgressItemsAtom)
@@ -80,14 +83,25 @@ export const YoloProgress = ({
       // Build patterns
       const patterns = buildPayeePatterns(transactions, categories)
 
+      // Load payee rules for context
+      const payeeRules = await getAllPayeeRules()
+
+      // Build rich AI context
+      const aiContext = buildAIContext({
+        userContext: config.userContext,
+        accounts,
+        payeeRules,
+        categories,
+        historicalPatterns: patterns,
+      })
+
       // Create categorizer
       const categorizer = createCategorizer(
         {
           openRouterApiKey: config.ai.openRouterApiKey,
           model: config.ai.model,
         },
-        categories,
-        patterns
+        aiContext
       )
 
       // Process transactions ONE BY ONE for streaming display

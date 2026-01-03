@@ -6,7 +6,11 @@ export interface PayeeRule {
   defaultCategoryId: string | null
   defaultCategoryName: string | null
   context: string // User notes like "Partner's gym"
+  aiContext?: string // AI-generated description (e.g., "German discount supermarket")
   aiTags: string[] // AI-generated: ["subscription", "grocery"]
+  suggestedCategoryId?: string // AI-suggested category (pending user approval)
+  suggestedCategoryName?: string
+  duplicateOf?: string // payeeId of primary if this is a duplicate
   lastSeen: string // ISO date
   transactionCount: number
   isNew: boolean // Flag for unconfigured payees

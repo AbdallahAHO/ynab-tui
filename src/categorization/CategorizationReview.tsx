@@ -15,13 +15,15 @@ import {
   resetCategorizationAtom,
   payeePatternsAtom,
 } from './categorization-atoms.js'
-import { transactionsAtom, categoryGroupsAtom } from '../transactions/transaction-atoms.js'
+import { transactionsAtom, categoryGroupsAtom, accountsAtom } from '../transactions/transaction-atoms.js'
 import { goBackAtom } from '../navigation/navigation-atoms.js'
 import { createCategorizer } from './categorizer.js'
 import { buildPayeePatterns } from './history-analyzer.js'
 import { flattenCategories, formatAmount, type YnabClient } from '../shared/ynab-client.js'
 import { KeyHints } from '../shared/components/KeyHints.js'
 import { CategoryPicker } from '../categories/CategoryPicker.js'
+import { buildAIContext } from '../shared/ai-context.js'
+import { getAllPayeeRules } from '../payees/payee-service.js'
 import type { AppConfig } from '../config/config-types.js'
 
 interface CategorizationReviewProps {
@@ -40,6 +42,7 @@ export const CategorizationReview = ({
 
   const transactions = useAtomValue(transactionsAtom)
   const categoryGroups = useAtomValue(categoryGroupsAtom)
+  const accounts = useAtomValue(accountsAtom)
   const categories = flattenCategories(categoryGroups)
 
   const [queue, setQueue] = useAtom(categorizationQueueAtom)
@@ -84,13 +87,24 @@ export const CategorizationReview = ({
       setError(null)
 
       try {
+        // Load payee rules for context
+        const payeeRules = await getAllPayeeRules()
+
+        // Build rich AI context
+        const aiContext = buildAIContext({
+          userContext: config.userContext,
+          accounts,
+          payeeRules,
+          categories,
+          historicalPatterns: allPatterns,
+        })
+
         const categorizer = createCategorizer(
           {
             openRouterApiKey: config.ai.openRouterApiKey,
             model: config.ai.model,
           },
-          categories,
-          allPatterns
+          aiContext
         )
 
         const txsToCateg = transactions.filter((tx) => transactionIds.includes(tx.id))
