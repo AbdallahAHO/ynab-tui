@@ -152,6 +152,29 @@ export const TransactionList = ({ budgetName, onRefresh }: TransactionListProps)
       }
     }
 
+    // Bulk memo generation - M for empty memos only, Shift+M includes existing
+    if (input === 'M') {
+      const ids = checkedIds.size > 0
+        ? Array.from(checkedIds)
+        : allTransactions.filter((tx) => !tx.deleted).map((tx) => tx.id)
+
+      if (ids.length > 0) {
+        navigate('memo-yolo', { transactionIds: ids, includeExisting: true })
+      }
+    }
+
+    if (input === 'm') {
+      const withoutMemos = allTransactions.filter((tx) => !tx.memo?.trim() && !tx.deleted)
+      if (withoutMemos.length > 0) {
+        navigate('memo-yolo', { transactionIds: withoutMemos.map((tx) => tx.id), includeExisting: false })
+      }
+    }
+
+    // Payee manager
+    if (input === 'P') {
+      navigate('payees')
+    }
+
     // Toggle filter
     if (input === 'u') {
       setShowUncategorizedOnly((v) => !v)
@@ -268,8 +291,10 @@ export const TransactionList = ({ budgetName, onRefresh }: TransactionListProps)
           { key: 'Space', label: 'select' },
           { key: 'c', label: 'categorize' },
           { key: 'Y', label: 'yolo' },
+          { key: 'm/M', label: 'memo' },
           { key: 'Enter', label: 'edit' },
           { key: 'u', label: 'filter' },
+          { key: 'P', label: 'payees' },
           { key: 'r', label: 'refresh' },
           { key: 'S', label: 'settings' },
           { key: 'q', label: 'quit' },
