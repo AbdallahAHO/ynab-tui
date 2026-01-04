@@ -13,6 +13,7 @@ import {
   viewportStartAtom,
   viewportSizeAtom,
 } from './transaction-atoms.js'
+import { transferPairMapAtom } from '../transfers/transfer-atoms.js'
 import { navigateAtom } from '../navigation/navigation-atoms.js'
 import { TransactionRow } from './TransactionRow.js'
 import { KeyHints } from '../shared/components/KeyHints.js'
@@ -36,6 +37,7 @@ export const TransactionList = ({ budgetName, onRefresh }: TransactionListProps)
   const navigate = useSetAtom(navigateAtom)
   const [viewportStart, setViewportStart] = useAtom(viewportStartAtom)
   const viewportSize = useAtomValue(viewportSizeAtom)
+  const transferPairMap = useAtomValue(transferPairMapAtom)
 
   // Track 'g' key for gg command
   const [waitingForG, setWaitingForG] = React.useState(false)
@@ -203,6 +205,13 @@ export const TransactionList = ({ budgetName, onRefresh }: TransactionListProps)
 
   const uncategorizedCount = allTransactions.filter((t) => !t.category_id && !t.deleted).length
 
+  const getTransferTargetAccount = (txId: string): string | undefined => {
+    const pair = transferPairMap.get(txId)
+    if (!pair) return undefined
+    // Return the "other" account in the pair
+    return txId === pair.outflow.id ? pair.toAccount.name : pair.fromAccount.name
+  }
+
   if (isLoading) {
     return (
       <Box flexDirection="column" padding={1}>
@@ -239,6 +248,7 @@ export const TransactionList = ({ budgetName, onRefresh }: TransactionListProps)
       <Box paddingX={1} gap={1} marginTop={1}>
         <Text dimColor>  </Text>
         <Text dimColor>  </Text>
+        <Text dimColor> </Text>
         <Text dimColor> </Text>
         <Box width={10}>
           <Text dimColor bold>Date</Text>
@@ -278,6 +288,7 @@ export const TransactionList = ({ budgetName, onRefresh }: TransactionListProps)
                 accountName={accountMap.get(tx.account_id) ?? 'Unknown'}
                 isSelected={actualIndex === selectedIndex}
                 isChecked={checkedIds.has(tx.id)}
+                transferToAccount={getTransferTargetAccount(tx.id)}
               />
             )
           })

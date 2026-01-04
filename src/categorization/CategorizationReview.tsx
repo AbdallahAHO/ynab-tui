@@ -16,6 +16,8 @@ import {
   payeePatternsAtom,
 } from './categorization-atoms.js'
 import { transactionsAtom, categoryGroupsAtom, accountsAtom } from '../transactions/transaction-atoms.js'
+import { transferPairMapAtom } from '../transfers/transfer-atoms.js'
+import type { TransferPair } from '../transfers/transfer-detector.js'
 import { goBackAtom } from '../navigation/navigation-atoms.js'
 import { createCategorizer } from './categorizer.js'
 import { buildPayeePatterns } from './history-analyzer.js'
@@ -44,6 +46,7 @@ export const CategorizationReview = ({
   const categoryGroups = useAtomValue(categoryGroupsAtom)
   const accounts = useAtomValue(accountsAtom)
   const categories = flattenCategories(categoryGroups)
+  const transferPairMap = useAtomValue(transferPairMapAtom)
 
   const [queue, setQueue] = useAtom(categorizationQueueAtom)
   const [currentIndex, setCurrentIndex] = useAtom(currentReviewIndexAtom)
@@ -65,6 +68,9 @@ export const CategorizationReview = ({
   const [memoEditMode, setMemoEditMode] = useState(false)
   const [memoEditValue, setMemoEditValue] = useState('')
   const [acceptedMemos, setAcceptedMemos] = useAtom(acceptedMemosAtom)
+
+  // Transfer confirmation state
+  const [skippedTransfers, setSkippedTransfers] = useState<Set<string>>(new Set())
 
   // Initialize queue and run categorization
   useEffect(() => {
@@ -124,6 +130,10 @@ export const CategorizationReview = ({
   const currentTxId = queue[currentIndex]
   const currentTx = transactions.find((t) => t.id === currentTxId)
   const currentResult = results.get(currentTxId)
+
+  // Check if current transaction is part of a detected transfer
+  const currentTransferPair = currentTxId ? transferPairMap.get(currentTxId) : undefined
+  const isTransferPending = currentTransferPair && !skippedTransfers.has(currentTxId)
 
   // Check if current item is already processed
   const isProcessed =
@@ -202,6 +212,39 @@ export const CategorizationReview = ({
       return next
     })
     moveNext()
+  }
+
+  const confirmTransfer = () => {
+    if (!currentTransferPair) return
+
+    // Skip both sides of the transfer (they don't need categorization)
+    setSkipped((prev) => {
+      const next = new Set(prev)
+      next.add(currentTransferPair.outflow.id)
+      next.add(currentTransferPair.inflow.id)
+      return next
+    })
+
+    // Mark as processed so we don't show transfer prompt again
+    setSkippedTransfers((prev) => {
+      const next = new Set(prev)
+      next.add(currentTransferPair.outflow.id)
+      next.add(currentTransferPair.inflow.id)
+      return next
+    })
+
+    moveNext()
+  }
+
+  const rejectTransfer = () => {
+    if (!currentTxId) return
+
+    // Mark transfer as rejected so we show AI suggestion instead
+    setSkippedTransfers((prev) => {
+      const next = new Set(prev)
+      next.add(currentTxId)
+      return next
+    })
   }
 
   const finish = async () => {
@@ -299,6 +342,37 @@ export const CategorizationReview = ({
         return
       }
       return
+    }
+
+    // Handle transfer confirmation prompt
+    if (isTransferPending && !isProcessed) {
+      if (input === 'y' || input === 'a') {
+        confirmTransfer()
+        return
+      }
+      if (input === 'n' || input === 'r') {
+        rejectTransfer()
+        return
+      }
+      // Allow navigation during transfer prompt
+      if (key.leftArrow || input === 'h') {
+        movePrev()
+        return
+      }
+      if (key.rightArrow || input === 'l') {
+        moveNext()
+        return
+      }
+      if (key.escape || input === 'q') {
+        if (accepted.size > 0) {
+          finish()
+        } else {
+          resetCategorization()
+          goBack()
+        }
+        return
+      }
+      return // Block other input during transfer prompt
     }
 
     if (key.escape || input === 'q') {
@@ -427,6 +501,70 @@ export const CategorizationReview = ({
             ]}
           />
         )}
+      </Box>
+    )
+  }
+
+  // Transfer confirmation UI
+  if (isTransferPending && currentTx && !isProcessed) {
+    const isOutflow = currentTx.id === currentTransferPair.outflow.id
+    const fromAccount = isOutflow ? currentTransferPair.fromAccount : currentTransferPair.toAccount
+    const toAccount = isOutflow ? currentTransferPair.toAccount : currentTransferPair.fromAccount
+
+    return (
+      <Box flexDirection="column" padding={1}>
+        {/* Progress bar */}
+        <Box gap={2}>
+          <Text bold>
+            Review [{currentIndex + 1}/{queue.length}]
+          </Text>
+          <Box>
+            <Text color="green">{progress.accepted}✓</Text>
+            <Text> </Text>
+            <Text color="red">{progress.rejected}✗</Text>
+            <Text> </Text>
+            <Text color="yellow">{progress.skipped}○</Text>
+          </Box>
+        </Box>
+
+        <Box marginY={1} flexDirection="column" borderStyle="round" borderColor="magenta" padding={1}>
+          <Text bold color="magenta">↔ Detected Transfer</Text>
+
+          <Box marginTop={1} flexDirection="column" gap={1}>
+            <Box gap={2}>
+              <Text bold>{fromAccount.name}</Text>
+              <Text color="red">{formatAmount(currentTransferPair.outflow.amount)}</Text>
+              <Text dimColor>{currentTransferPair.outflow.date}</Text>
+            </Box>
+
+            <Text color="magenta">→</Text>
+
+            <Box gap={2}>
+              <Text bold>{toAccount.name}</Text>
+              <Text color="green">{formatAmount(currentTransferPair.inflow.amount)}</Text>
+              <Text dimColor>{currentTransferPair.inflow.date}</Text>
+            </Box>
+          </Box>
+
+          <Box marginTop={1}>
+            <Text dimColor>
+              Confidence: {Math.round(currentTransferPair.confidence * 100)}%
+            </Text>
+          </Box>
+        </Box>
+
+        <Box marginY={1}>
+          <Text>Confirm this is an internal transfer? Both transactions will be skipped.</Text>
+        </Box>
+
+        <KeyHints
+          hints={[
+            { key: 'y', label: 'confirm transfer' },
+            { key: 'n', label: 'not a transfer' },
+            { key: '←/→', label: 'navigate' },
+            { key: 'Esc', label: 'finish' },
+          ]}
+        />
       </Box>
     )
   }
