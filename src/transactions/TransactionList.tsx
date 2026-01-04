@@ -12,12 +12,15 @@ import {
   transactionsAtom,
   viewportStartAtom,
   viewportSizeAtom,
+  showSpendingSummaryAtom,
+  monthlySpendingSummaryAtom,
 } from './transaction-atoms.js'
 import { transferPairMapAtom } from '../transfers/transfer-atoms.js'
 import { navigateAtom } from '../navigation/navigation-atoms.js'
 import { TransactionRow } from './TransactionRow.js'
 import { KeyHints } from '../shared/components/KeyHints.js'
 import { StatusBar } from '../shared/components/StatusBar.js'
+import { SpendingSummary } from '../shared/components/SpendingSummary.js'
 
 interface TransactionListProps {
   budgetName: string
@@ -38,6 +41,8 @@ export const TransactionList = ({ budgetName, onRefresh }: TransactionListProps)
   const [viewportStart, setViewportStart] = useAtom(viewportStartAtom)
   const viewportSize = useAtomValue(viewportSizeAtom)
   const transferPairMap = useAtomValue(transferPairMapAtom)
+  const [showSpendingSummary, setShowSpendingSummary] = useAtom(showSpendingSummaryAtom)
+  const spendingSummary = useAtomValue(monthlySpendingSummaryAtom)
 
   // Track 'g' key for gg command
   const [waitingForG, setWaitingForG] = React.useState(false)
@@ -182,6 +187,11 @@ export const TransactionList = ({ budgetName, onRefresh }: TransactionListProps)
       setShowUncategorizedOnly((v) => !v)
     }
 
+    // Toggle spending summary
+    if (input === 's') {
+      setShowSpendingSummary((v) => !v)
+    }
+
     // Refresh
     if (input === 'r') {
       onRefresh()
@@ -228,6 +238,15 @@ export const TransactionList = ({ budgetName, onRefresh }: TransactionListProps)
         uncategorizedCount={uncategorizedCount}
         selectedCount={checkedIds.size}
       />
+
+      {/* Spending summary */}
+      {showSpendingSummary && (
+        <SpendingSummary
+          totalSpent={spendingSummary.totalSpent}
+          totalIncome={spendingSummary.totalIncome}
+          topCategory={spendingSummary.topCategory}
+        />
+      )}
 
       {/* Filter bar */}
       <Box paddingX={1} gap={2}>
@@ -305,6 +324,7 @@ export const TransactionList = ({ budgetName, onRefresh }: TransactionListProps)
           { key: 'm/M', label: 'memo' },
           { key: 'Enter', label: 'edit' },
           { key: 'u', label: 'filter' },
+          { key: 's', label: 'summary' },
           { key: 'P', label: 'payees' },
           { key: 'r', label: 'refresh' },
           { key: 'S', label: 'settings' },

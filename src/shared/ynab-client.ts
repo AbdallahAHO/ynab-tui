@@ -14,6 +14,7 @@ export interface YnabClient {
   getPayees: () => Promise<Payee[]>
   updatePayee: (payeeId: string, name: string) => Promise<void>
   getBudgetName: () => string
+  clearCache: () => void
 }
 
 /**
@@ -98,6 +99,13 @@ export const createYnabClient = (
 
   const getBudgetName = () => budgetName
 
+  const clearCache = () => {
+    lastKnowledge = undefined
+    categoriesCache = null
+    accountsCache = null
+    payeesCache = null
+  }
+
   return {
     getTransactions,
     getUncategorizedTransactions,
@@ -107,6 +115,7 @@ export const createYnabClient = (
     getPayees,
     updatePayee,
     getBudgetName,
+    clearCache,
   }
 }
 
