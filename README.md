@@ -63,6 +63,68 @@ The setup wizard will guide you through configuration on first run.
 - **Multi-Select** - Batch operations with `Space` to toggle
 - **Fast & Responsive** - Built with React Ink for smooth TUI
 
+## CLI Automation
+
+Run ynab-tui as a non-interactive CLI for cron jobs, scripts, and AI agent automation.
+
+### Commands
+
+| Command | Description |
+|---------|-------------|
+| `ynab-tui categorize` | Auto-categorize uncategorized transactions |
+| `ynab-tui list` | List transactions (JSON or text output) |
+| `ynab-tui memo` | Generate memos for transactions |
+| `ynab-tui payees` | Manage payee rules |
+
+### Environment Variables
+
+Configure via environment variables for headless operation:
+
+| Variable | Description |
+|----------|-------------|
+| `YNAB_TOKEN` | YNAB Personal Access Token |
+| `YNAB_BUDGET_ID` | Budget ID to use |
+| `OPENROUTER_KEY` | OpenRouter API key for AI features |
+| `YNAB_MODEL` | AI model (optional, defaults to gpt-4.1-nano) |
+
+Environment variables take priority over the config file.
+
+### Examples
+
+```bash
+# Auto-categorize with 90% confidence threshold
+YNAB_TOKEN=xxx OPENROUTER_KEY=yyy YNAB_BUDGET_ID=zzz \
+  ynab-tui categorize --threshold=0.9
+
+# List uncategorized transactions as JSON
+ynab-tui list --uncategorized --format=json
+
+# Dry run - see what would be categorized without saving
+ynab-tui categorize --dry-run --format=text
+
+# Generate memos for all transactions missing them
+ynab-tui memo --all-missing
+
+# Set a default category for a payee
+ynab-tui payees --set-category="Whole Foods:Groceries"
+
+# Cron job: daily auto-categorization
+0 9 * * * ynab-tui categorize --threshold=0.85 --format=json >> ~/ynab.log 2>&1
+```
+
+### Output Formats
+
+- `--format=json` (default) - Machine-readable JSON for scripts and agents
+- `--format=text` - Human-readable tables and summaries
+
+### Exit Codes
+
+| Code | Meaning |
+|------|---------|
+| 0 | Success |
+| 1 | Error (missing config, API failure) |
+| 2 | Partial success (some items failed) |
+
 ## Setup
 
 On first run, you'll be guided through:
@@ -211,4 +273,4 @@ MIT - See [LICENSE](LICENSE) for details.
 
 ---
 
-Built by [Abdallah](https://abdallahaho.com)
+Built by [Abdallah Othman](https://abdallahaho.com) (@AbdallahAHO)
