@@ -9,6 +9,7 @@ interface TransactionRowProps {
   accountName: string
   isSelected: boolean
   isChecked: boolean
+  transferToAccount?: string
 }
 
 export const TransactionRow = ({
@@ -17,6 +18,7 @@ export const TransactionRow = ({
   accountName,
   isSelected,
   isChecked,
+  transferToAccount,
 }: TransactionRowProps) => {
   const flag = getFlagEmoji(transaction.flag_color)
   const amount = formatAmount(transaction.amount)
@@ -32,6 +34,11 @@ export const TransactionRow = ({
       {/* Checkbox */}
       <Text color={isChecked ? 'green' : 'gray'}>
         {isChecked ? '☑' : '☐'}
+      </Text>
+
+      {/* Transfer indicator */}
+      <Text color={transferToAccount ? 'magenta' : undefined}>
+        {transferToAccount ? '↔' : ' '}
       </Text>
 
       {/* Flag */}
