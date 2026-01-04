@@ -1,5 +1,5 @@
 import type { PayeeRule } from '../payees/payee-types.js'
-import type { TransactionDetail, Category, CategoryGroupWithCategories } from '../shared/ynab-client.js'
+import type { TransactionDetail, Category, CategoryGroupWithCategories, Account } from '../shared/ynab-client.js'
 
 /**
  * Creates a mock PayeeRule with sensible defaults
@@ -93,5 +93,30 @@ export const createMockCategoryGroup = (
   hidden: false,
   deleted: false,
   categories: [],
+  ...overrides,
+})
+
+/**
+ * Creates a mock Account
+ */
+export const createMockAccount = (overrides: Partial<Account> = {}): Account => ({
+  id: `account-${Math.random().toString(36).slice(2, 8)}`,
+  name: 'Test Account',
+  type: 'checking',
+  on_budget: true,
+  closed: false,
+  note: null,
+  balance: 100000,
+  cleared_balance: 100000,
+  uncleared_balance: 0,
+  transfer_payee_id: `transfer-payee-${Math.random().toString(36).slice(2, 8)}`,
+  direct_import_linked: false,
+  direct_import_in_error: false,
+  last_reconciled_at: null,
+  debt_original_balance: null,
+  debt_interest_rates: null,
+  debt_minimum_payments: null,
+  debt_escrow_amounts: null,
+  deleted: false,
   ...overrides,
 })

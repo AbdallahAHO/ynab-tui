@@ -43,6 +43,13 @@ The setup wizard will guide you through configuration on first run.
 - **Smart Memos** - AI suggests memos for transactions without notes
 - **Historical Learning** - Uses your past categorization patterns
 
+### Transfer Detection
+
+- **Auto-Detect** - Matches transactions with same amount, opposite signs, within 3 days
+- **Visual Indicator** - ↔ symbol shows detected transfer pairs in transaction list
+- **Quick Confirm** - One-key confirmation skips AI for obvious transfers
+- **Confidence Scoring** - Same-day matches score higher than multi-day gaps
+
 ### Payee Management
 
 - **Auto-Tagging** - AI generates tags for payees (grocery, subscription, etc.)

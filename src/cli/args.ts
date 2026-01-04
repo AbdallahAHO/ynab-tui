@@ -67,6 +67,11 @@ export const parseArgs = (argv: string[]): CommandAction | null => {
     .name('ynab-tui')
     .description('AI-powered YNAB transaction categorization')
     .version(getVersion())
+    .action(() => {
+      // Default action when no subcommand is provided - run TUI
+      const forceSetup = argv.includes('--setup')
+      result = { command: 'tui', forceSetup }
+    })
 
   // Global options available to all subcommands
   const addGlobalOptions = (cmd: Command) => {
@@ -153,12 +158,6 @@ export const parseArgs = (argv: string[]): CommandAction | null => {
       }
     }
     throw err
-  }
-
-  // If no subcommand was matched, run TUI mode
-  if (!result) {
-    const forceSetup = argv.includes('--setup')
-    result = { command: 'tui', forceSetup }
   }
 
   return result
