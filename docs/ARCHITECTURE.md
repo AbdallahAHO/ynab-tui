@@ -6,6 +6,7 @@ This document provides a deep dive into the architecture, data flows, and design
 
 - [Overview](#overview)
 - [System Architecture](#system-architecture)
+- [CLI Architecture](#cli-architecture)
 - [Data Flow](#data-flow)
 - [Component Architecture](#component-architecture)
 - [State Management](#state-management)
@@ -73,6 +74,128 @@ ynab-tui is a terminal-based application built with React Ink that provides AI-p
 └──────────────────────┘ └──────────────────┘ │  ├── payees.json         │
                                               │  └── ai-cache.json       │
                                               └──────────────────────────┘
+```
+
+---
+
+## CLI Architecture
+
+The application supports two modes of operation: interactive TUI mode and headless CLI mode for automation.
+
+### Dual-Mode Entry Point
+
+```
+┌─────────────────────────────────────────────────────────────────────────┐
+│                              cli.tsx                                     │
+├─────────────────────────────────────────────────────────────────────────┤
+│                                                                          │
+│  ┌───────────────┐                                                      │
+│  │  Parse Args   │ ← commander                                          │
+│  │  (args.ts)    │                                                      │
+│  └───────┬───────┘                                                      │
+│          │                                                               │
+│          ▼                                                               │
+│  ┌───────────────────────────────────────────────────────────────┐      │
+│  │                    Has subcommand?                             │      │
+│  └───────────────────────────────────────────────────────────────┘      │
+│          │                              │                                │
+│          ▼ Yes                          ▼ No                             │
+│  ┌───────────────┐              ┌───────────────┐                       │
+│  │   CLI Mode    │              │   TUI Mode    │                       │
+│  │  (commands/)  │              │   (app.tsx)   │                       │
+│  └───────────────┘              └───────────────┘                       │
+│                                                                          │
+└─────────────────────────────────────────────────────────────────────────┘
+```
+
+### CLI Commands
+
+| Command | Handler | Purpose |
+|---------|---------|---------|
+| `list` | `commands/list.ts` | List transactions with filters |
+| `categorize` | `commands/categorize.ts` | Auto-categorize using AI |
+| `memo` | `commands/memo.ts` | Generate transaction memos |
+| `payees` | `commands/payees.ts` | Manage payee rules |
+
+### Configuration Loading
+
+```
+┌─────────────────────────────────────────────────────────────────────────┐
+│                         config-loader.ts                                 │
+├─────────────────────────────────────────────────────────────────────────┤
+│                                                                          │
+│  Priority Order (highest to lowest):                                     │
+│                                                                          │
+│  1. Environment Variables                                                │
+│     ├── YNAB_TOKEN                                                       │
+│     ├── YNAB_BUDGET_ID                                                   │
+│     ├── OPENROUTER_KEY                                                   │
+│     └── YNAB_MODEL                                                       │
+│                                                                          │
+│  2. Config File                                                          │
+│     └── ~/.config/ynab-tui/config.json                                   │
+│                                                                          │
+│  → Merged config with env vars taking precedence                         │
+│                                                                          │
+└─────────────────────────────────────────────────────────────────────────┘
+```
+
+### Command Handler Pattern
+
+Each command follows a consistent pattern:
+
+```typescript
+interface CommandResult<T> {
+  success: boolean
+  data?: T
+  error?: { message: string; code: string }
+}
+
+async function categorizeCommand(
+  options: CategorizeOptions,
+  config: AppConfig
+): Promise<void> {
+  const formatter = createFormatter(options.format, options.quiet)
+
+  // 1. Fetch data from YNAB
+  // 2. Process with AI (uses same categorizer as TUI)
+  // 3. Apply changes to YNAB
+  // 4. Output results via formatter
+
+  formatter.success(result)
+}
+```
+
+### Output Flow
+
+```
+┌──────────────┐     ┌──────────────┐     ┌──────────────┐
+│   Command    │ ──▶ │  Formatter   │ ──▶ │   stdout     │
+│   Handler    │     │ (json/text)  │     │   (result)   │
+└──────────────┘     └──────────────┘     └──────────────┘
+       │
+       ▼
+┌──────────────┐
+│    stderr    │
+│  (progress)  │
+└──────────────┘
+```
+
+- **stdout**: Clean output (JSON or formatted text) for piping
+- **stderr**: Progress messages (suppressible with `--quiet`)
+
+### CLI File Structure
+
+```
+src/cli/
+├── args.ts           # Commander argument parsing
+├── output.ts         # JSON/text output formatting
+└── commands/
+    ├── index.ts      # Command exports
+    ├── list.ts       # List transactions
+    ├── categorize.ts # Auto-categorization (YOLO mode)
+    ├── memo.ts       # Memo generation
+    └── payees.ts     # Payee rule management
 ```
 
 ---

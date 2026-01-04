@@ -5,6 +5,24 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.0](https://github.com/AbdallahAHO/ynab-tui/compare/v0.2.0...v0.3.0) (2026-01-04)
+
+### Features
+
+- Add CLI automation for cron jobs and agent integration
+- Add `categorize` command for headless auto-categorization
+- Add `list` command for listing transactions with filters
+- Add `memo` command for batch memo generation
+- Add `payees` command for managing payee rules
+- Support environment variables (YNAB_TOKEN, OPENROUTER_KEY, YNAB_BUDGET_ID)
+- Add JSON and text output formats for scripting
+- Add dry-run mode for previewing categorizations
+
+### Documentation
+
+- Add CLI automation section to README
+- Add CLI architecture section to ARCHITECTURE.md
+
 ## [0.2.0](https://github.com/AbdallahAHO/ynab-tui/compare/v0.1.1...v0.2.0) (2026-01-04)
 
 ### Features

@@ -1,6 +1,6 @@
 {
   "name": "ynab-tui",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Interactive TUI for YNAB with AI-powered transaction categorization",
   "type": "module",
   "bin": {
@@ -49,6 +49,7 @@
     "@inkjs/ui": "^2.0.0",
     "@openrouter/ai-sdk-provider": "^0.4.3",
     "ai": "^4.1.0",
+    "commander": "^14.0.2",
     "ink": "^5.1.0",
     "ink-table": "^3.1.0",
     "ink-text-input": "^6.0.0",
