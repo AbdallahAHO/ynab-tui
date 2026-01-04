@@ -78,3 +78,59 @@ export const createPayeeTransactionsAtom = (payeeId: string) =>
       .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
       .slice(0, 10) // Last 10 transactions
   })
+
+// Toggle for showing spending summary
+export const showSpendingSummaryAtom = atom(true)
+
+// Derived: monthly spending summary for current month
+export const monthlySpendingSummaryAtom = atom((get) => {
+  const transactions = get(transactionsAtom)
+  const categoryMap = get(categoryMapAtom)
+
+  // Get current month in YYYY-MM format
+  const now = new Date()
+  const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
+
+  // Filter to current month, non-deleted, non-transfer transactions
+  const monthTxs = transactions.filter((tx) => {
+    if (tx.deleted) return false
+    if (tx.transfer_account_id) return false
+    if (tx.payee_name?.startsWith('Transfer :')) return false
+    return tx.date.startsWith(currentMonth)
+  })
+
+  // Calculate totals
+  let totalSpent = 0
+  let totalIncome = 0
+  const categorySpending: Record<string, { name: string; spent: number }> = {}
+
+  for (const tx of monthTxs) {
+    if (tx.amount < 0) {
+      totalSpent += tx.amount
+
+      // Track by category
+      if (tx.category_id) {
+        const cat = categoryMap.get(tx.category_id)
+        if (cat && !cat.name.startsWith('Inflow:')) {
+          if (!categorySpending[tx.category_id]) {
+            categorySpending[tx.category_id] = { name: cat.name, spent: 0 }
+          }
+          categorySpending[tx.category_id].spent += tx.amount
+        }
+      }
+    } else {
+      totalIncome += tx.amount
+    }
+  }
+
+  // Find top spending category (most negative)
+  const topCategory = Object.values(categorySpending)
+    .sort((a, b) => a.spent - b.spent)[0] ?? null
+
+  return {
+    totalSpent,
+    totalIncome,
+    topCategory,
+    month: currentMonth,
+  }
+})
