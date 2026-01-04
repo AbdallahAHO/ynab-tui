@@ -46,10 +46,13 @@ export const PayeeEditor = ({
       .slice(0, 5)
   }, [allTransactions, payee.payeeId])
 
+  const [aiContext, setAiContext] = useState(payee.aiContext || '')
+
   const fields = [
     { key: 'name', label: 'Display Name', value: displayName },
     { key: 'category', label: 'Default Category', value: payee.defaultCategoryName ?? 'None' },
     { key: 'context', label: 'Context Notes', value: context || 'None' },
+    { key: 'aiContext', label: 'AI Context', value: aiContext || 'None' },
     { key: 'tags', label: 'AI Tags', value: payee.aiTags.join(', ') || 'None' },
   ]
 
@@ -82,9 +85,13 @@ export const PayeeEditor = ({
         categories
       )
       setDisplayName(improvement.displayName)
+      if (improvement.context) {
+        setAiContext(improvement.context)
+      }
       await updatePayeeRule(payee.payeeId, {
         displayName: improvement.displayName,
         aiTags: improvement.tags,
+        aiContext: improvement.context,
       })
     } catch (e) {
       // Failed
