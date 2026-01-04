@@ -49,11 +49,14 @@ jobs:
         with:
           ref: ${{ github.event.release.tag_name || needs.release-please.outputs.tag_name }}
 
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@v4
         with:
           node-version: "22"
           cache: "npm"
-          registry-url: "https://registry.npmjs.org"
+          # Note: Don't set registry-url - let OIDC handle auth directly
+
+      - name: Update npm for OIDC support
+        run: npm install -g npm@latest
 
       - name: Install dependencies
         run: npm ci
@@ -62,10 +65,8 @@ jobs:
         run: npm run build
 
       - name: Publish to npm
-        run: |
-          # Clear NODE_AUTH_TOKEN to let OIDC handle auth
-          unset NODE_AUTH_TOKEN
-          npm publish --provenance --access public
+        run: npm publish --access public
+        # OIDC trusted publishing - no NODE_AUTH_TOKEN needed
 
       - name: Summary
         run: |
