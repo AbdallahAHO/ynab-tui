@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.1](https://github.com/AbdallahAHO/ynab-tui/compare/v0.4.0...v0.4.1) (2026-01-04)
+
+
+### Features
+
+* add PM subagent for GitHub project management ([d9398ce](https://github.com/AbdallahAHO/ynab-tui/commit/d9398ce5ca37341e3fcd22d0a62cf89f08910c9f))
+* add PM subagent for GitHub project management ([aa1c8ed](https://github.com/AbdallahAHO/ynab-tui/commit/aa1c8edd270f61e0c96c9f75376f15e820db3f14))
+* Monthly spending report command + TUI summary ([#33](https://github.com/AbdallahAHO/ynab-tui/issues/33)) ([1cbfa06](https://github.com/AbdallahAHO/ynab-tui/commit/1cbfa061510629ce6d63b808c46b55d51d278c99))
+
 ## [0.4.0](https://github.com/AbdallahAHO/ynab-tui/compare/v0.3.5...v0.4.0) (2026-01-04)
 
 ### Features
