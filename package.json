@@ -1,6 +1,6 @@
 {
   "name": "ynab-tui",
-  "version": "0.3.1",
+  "version": "0.3.2",
   "description": "Interactive TUI for YNAB with AI-powered transaction categorization",
   "type": "module",
   "bin": {
