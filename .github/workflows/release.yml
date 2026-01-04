@@ -62,8 +62,8 @@ jobs:
         run: npm run build
 
       - name: Publish to npm
-        run: npm publish --access public
-        # No token needed - uses OIDC trusted publishing
+        run: npm publish --provenance --access public
+        # Uses OIDC trusted publishing with provenance attestation
 
       - name: Summary
         run: |
