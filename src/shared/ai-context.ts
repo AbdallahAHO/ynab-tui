@@ -201,12 +201,13 @@ const formatPayeeSection = (payees: PayeeContextSection): string => {
   const lines: string[] = ['## Known Payees with Tags']
 
   const taggedPayees = payees.rules
-    .filter((r) => r.aiTags.length > 0 || r.context)
+    .filter((r) => r.aiTags.length > 0 || r.context || r.aiContext)
     .slice(0, 30) // Limit to avoid prompt bloat
 
   for (const payee of taggedPayees) {
     const tags = payee.aiTags.length > 0 ? `[${payee.aiTags.join(', ')}]` : ''
-    const context = payee.context ? ` - ${payee.context}` : ''
+    const contextParts = [payee.aiContext, payee.context].filter(Boolean)
+    const context = contextParts.length > 0 ? ` - ${contextParts.join('; ')}` : ''
     lines.push(`- "${payee.displayName}" ${tags}${context}`)
   }
 
@@ -236,7 +237,7 @@ const formatPatternsSection = (patterns: PayeePattern[], limit: number): string 
 export const getPayeeEnrichment = (
   payeeName: string,
   context: AIContext
-): { tags: string[]; userContext: string } | null => {
+): { tags: string[]; userContext: string; aiContext?: string } | null => {
   const normalized = payeeName.toLowerCase().replace(/[^a-z0-9]/g, '')
   const rule = context.payees.rules.find((r) => r.normalizedName === normalized)
 
@@ -245,6 +246,7 @@ export const getPayeeEnrichment = (
   return {
     tags: rule.aiTags,
     userContext: rule.context,
+    aiContext: rule.aiContext,
   }
 }
 
