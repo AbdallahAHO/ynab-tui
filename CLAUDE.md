@@ -70,3 +70,57 @@ All user data stored in `~/.config/ynab-tui/`:
 - `config.json` - API keys, model selection, user context
 - `payees.json` - Payee rules with tags and default categories
 - `ai-cache.json` - Cached AI responses (30-day TTL)
+
+## Git Workflow (Gitflow)
+
+This repo uses gitflow branching model.
+
+### Branches
+- `main` - Production releases only, tagged with versions (v0.1.0, v0.1.1, etc.)
+- `develop` - Integration branch for features, base for new work
+
+### New Feature
+```bash
+git checkout develop
+git checkout -b feature/your-feature-name
+# ... work ...
+git checkout develop && git merge feature/your-feature-name
+git branch -d feature/your-feature-name
+```
+
+### Bug Fix
+```bash
+git checkout develop
+git checkout -b fix/bug-description
+# ... fix ...
+git checkout develop && git merge fix/bug-description
+git branch -d fix/bug-description
+```
+
+### Hotfix (production bug)
+```bash
+git checkout main
+git checkout -b hotfix/critical-fix
+# ... fix ...
+git checkout main && git merge hotfix/critical-fix
+git tag -a vX.Y.Z -m "vX.Y.Z - Hotfix description"
+git checkout develop && git merge hotfix/critical-fix
+git branch -d hotfix/critical-fix
+```
+
+### Release
+```bash
+git checkout develop
+git checkout -b release/vX.Y.Z
+# bump version in package.json, final testing
+git checkout main && git merge release/vX.Y.Z
+git tag -a vX.Y.Z -m "vX.Y.Z - Release description"
+npm publish
+git checkout develop && git merge release/vX.Y.Z
+git branch -d release/vX.Y.Z
+```
+
+### Commit Messages
+- No AI tool references in commits
+- Format: `<type>: <description>` (e.g., `feat: add payee search`, `fix: resolve freeze bug`)
+- Types: `feat`, `fix`, `refactor`, `docs`, `chore`, `test`
