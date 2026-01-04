@@ -6,6 +6,7 @@ export type Screen =
   | 'categorize'
   | 'review'
   | 'yolo'
+  | 'memo-yolo'
   | 'settings'
   | 'payees'
   | 'help'
@@ -14,6 +15,7 @@ export interface ScreenParams {
   transactionId?: string
   transactionIds?: string[]
   payeeId?: string
+  includeExisting?: boolean
 }
 
 export const currentScreenAtom = atom<Screen>('transactions')

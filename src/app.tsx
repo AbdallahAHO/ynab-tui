@@ -16,6 +16,7 @@ import { TransactionList } from './transactions/TransactionList.js'
 import { TransactionEdit } from './transactions/TransactionEdit.js'
 import { CategorizationReview } from './categorization/CategorizationReview.js'
 import { YoloProgress } from './categorization/YoloProgress.js'
+import { MemoYoloProgress } from './categorization/MemoYoloProgress.js'
 import { HelpScreen } from './shared/components/HelpScreen.js'
 import { SettingsScreen } from './settings/SettingsScreen.js'
 import { PayeeManager } from './payees/PayeeManager.js'
@@ -91,6 +92,7 @@ const AppContent = ({ config, ynabClient, onReconfigure }: AppContentProps) => {
         <TransactionEdit
           transactionId={screenParams.transactionId}
           ynabClient={ynabClient}
+          config={config}
         />
       )
 
@@ -115,6 +117,19 @@ const AppContent = ({ config, ynabClient, onReconfigure }: AppContentProps) => {
           transactionIds={screenParams.transactionIds}
           config={config}
           ynabClient={ynabClient}
+        />
+      )
+
+    case 'memo-yolo':
+      if (!screenParams.transactionIds?.length) {
+        return <Text color="red">No transactions selected for memo generation</Text>
+      }
+      return (
+        <MemoYoloProgress
+          transactionIds={screenParams.transactionIds}
+          config={config}
+          ynabClient={ynabClient}
+          includeExisting={screenParams.includeExisting ?? false}
         />
       )
 

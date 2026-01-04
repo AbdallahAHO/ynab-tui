@@ -124,3 +124,11 @@ git branch -d release/vX.Y.Z
 - No AI tool references in commits
 - Format: `<type>: <description>` (e.g., `feat: add payee search`, `fix: resolve freeze bug`)
 - Types: `feat`, `fix`, `refactor`, `docs`, `chore`, `test`
+
+## Development Rules
+
+**Always follow these - no exceptions:**
+
+- **Cache all AI calls** - Use `ai-cache.ts` for every AI response, 30-day TTL, saves tokens
+- **Follow gitflow strictly** - Feature branches from develop, releases to main with version tags
+- **No AI tool references** - Never mention AI assistants in commits, comments, or code
