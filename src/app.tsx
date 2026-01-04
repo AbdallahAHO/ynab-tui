@@ -45,6 +45,9 @@ const AppContent = ({ config, ynabClient, onReconfigure }: AppContentProps) => {
     setIsLoading(true)
     setError(null)
 
+    // Clear cache to force full refresh (not delta)
+    ynabClient.clearCache()
+
     try {
       const [transactions, accounts, categories] = await Promise.all([
         ynabClient.getTransactions(),

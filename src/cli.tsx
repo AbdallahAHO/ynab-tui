@@ -7,7 +7,7 @@ import { runSetupWizard } from './config/setup-wizard.js'
 import type { AppConfig } from './config/config-types.js'
 import { parseArgs, type CommandAction } from './cli/args.js'
 import { loadConfigWithEnv, validateConfigForCommand, ENV_VARS } from './config/config-loader.js'
-import { listCommand, categorizeCommand, memoCommand, payeesCommand } from './cli/commands/index.js'
+import { listCommand, categorizeCommand, memoCommand, payeesCommand, reportCommand } from './cli/commands/index.js'
 import { createFormatter } from './cli/output.js'
 
 let currentInstance: ReturnType<typeof render> | null = null
@@ -83,6 +83,9 @@ const runCliCommand = async (action: CommandAction) => {
       break
     case 'payees':
       await payeesCommand(action.options, config!)
+      break
+    case 'report':
+      await reportCommand(action.options, config!)
       break
   }
 }

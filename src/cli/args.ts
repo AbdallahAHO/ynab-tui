@@ -49,11 +49,18 @@ export interface PayeesOptions extends GlobalOptions {
   noCategory: boolean
 }
 
+export interface ReportOptions extends GlobalOptions {
+  month?: string
+  account?: string
+  compare: number
+}
+
 export type CommandAction =
   | { command: 'list'; options: ListOptions }
   | { command: 'categorize'; options: CategorizeOptions }
   | { command: 'memo'; options: MemoOptions }
   | { command: 'payees'; options: PayeesOptions }
+  | { command: 'report'; options: ReportOptions }
   | { command: 'tui'; forceSetup: boolean }
 
 /**
@@ -142,6 +149,24 @@ export const parseArgs = (argv: string[]): CommandAction | null => {
       .option('--no-category', 'Only show payees without default category', false)
   ).action((options) => {
     result = { command: 'payees', options }
+  })
+
+  // Report command
+  addGlobalOptions(
+    program
+      .command('report')
+      .description('Generate monthly spending report')
+      .option('-m, --month <month>', 'Target month in YYYY-MM format (default: current month)')
+      .option('-a, --account <name>', 'Filter by account name (case-insensitive)')
+      .option('-c, --compare <months>', 'Number of previous months to compare', '0')
+  ).action((options) => {
+    result = {
+      command: 'report',
+      options: {
+        ...options,
+        compare: parseInt(options.compare, 10),
+      },
+    }
   })
 
   // Parse with exitOverride to prevent process.exit

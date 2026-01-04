@@ -88,7 +88,7 @@ export const loadConfigWithEnv = async (): Promise<LoadConfigResult> => {
  */
 export const validateConfigForCommand = (
   config: AppConfig | null,
-  command: 'list' | 'categorize' | 'memo' | 'payees'
+  command: 'list' | 'categorize' | 'memo' | 'payees' | 'report'
 ): { valid: boolean; missing: string[] } => {
   if (!config) {
     return {
@@ -104,12 +104,10 @@ export const validateConfigForCommand = (
   if (!config.ynab.defaultBudgetId) missing.push(ENV_VARS.YNAB_BUDGET_ID)
 
   // AI-related commands need OpenRouter key
-  if (command !== 'list' && command !== 'payees') {
+  // List, payees, and report do NOT require AI
+  if (command !== 'list' && command !== 'payees' && command !== 'report') {
     if (!config.ai.openRouterApiKey) missing.push(ENV_VARS.OPENROUTER_KEY)
   }
-
-  // Payees with --set-category doesn't need AI, but AI tagging would
-  // For now, payees list/set-category doesn't require AI key
 
   return { valid: missing.length === 0, missing }
 }
