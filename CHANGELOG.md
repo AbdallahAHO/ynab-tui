@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.0](https://github.com/AbdallahAHO/ynab-tui/compare/v0.3.5...v0.4.0) (2026-01-04)
+
+### Features
+
+- Add automatic transfer detection between accounts
+  - Matches transactions with same amount, opposite signs, within 3 days
+  - Visual ↔ indicator in transaction list for detected pairs
+  - Quick confirmation flow during categorization review
+  - Confidence scoring based on date proximity
+
+### Bug Fixes
+
+- Resolve TUI not launching when no subcommand provided
+
 ## [0.3.5](https://github.com/AbdallahAHO/ynab-tui/compare/v0.3.4...v0.3.5) (2026-01-04)
 
 ### Bug Fixes
