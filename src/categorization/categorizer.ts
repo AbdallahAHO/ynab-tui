@@ -1,7 +1,12 @@
 import { generateObject } from 'ai'
 import { createOpenRouter } from '@openrouter/ai-sdk-provider'
 import type { TransactionDetail } from '../shared/ynab-client.js'
-import { categorizationResultSchema, type CategorizationResult } from './categorization-types.js'
+import {
+  categorizationResultSchema,
+  memoGenerationResultSchema,
+  type CategorizationResult,
+  type MemoGenerationResult,
+} from './categorization-types.js'
 import { normalizePayeeName } from '../payees/payee-types.js'
 import { generateCacheKey, getCachedResponse, setCachedResponse } from '../shared/ai-cache.js'
 import { type AIContext, formatContextForPrompt, getAccountInfo } from '../shared/ai-context.js'
@@ -14,6 +19,8 @@ interface CategorizerConfig {
 interface Categorizer {
   categorize: (transaction: TransactionDetail) => Promise<CategorizationResult>
   categorizeBatch: (transactions: TransactionDetail[]) => Promise<Map<string, CategorizationResult>>
+  generateMemo: (transaction: TransactionDetail, forceReplace?: boolean) => Promise<MemoGenerationResult | null>
+  generateMemoBatch: (transactions: TransactionDetail[], forceReplace?: boolean) => Promise<Map<string, MemoGenerationResult>>
 }
 
 /**
@@ -176,5 +183,91 @@ ${accountLine}`.trim(),
     return results
   }
 
-  return { categorize, categorizeBatch }
+  const memoSystemPrompt = `You are a YNAB memo generator. Generate concise, helpful memos for transactions that describe what the purchase was for.
+
+${contextStr}
+
+## Memo Guidelines
+1. short: Brief context (2-5 words) - e.g., "Weekly groceries", "Netflix subscription", "Work lunch"
+2. detailed: More descriptive with context - e.g., "Grocery shopping at Whole Foods for the week"
+
+Be specific but concise. Focus on what the transaction was FOR, not just what it was.`
+
+  const generateMemo = async (
+    transaction: TransactionDetail,
+    forceReplace = false
+  ): Promise<MemoGenerationResult | null> => {
+    const hasMemo = Boolean(transaction.memo && transaction.memo.trim())
+
+    // Skip if has memo and not forcing replacement
+    if (hasMemo && !forceReplace) return null
+
+    const amount = transaction.amount / 1000
+    const normalizedPayee = normalizePayeeName(transaction.payee_name ?? '')
+    const categoryId = transaction.category_id ?? 'uncategorized'
+
+    // Check cache
+    const cacheKey = generateCacheKey('memo', normalizedPayee, categoryId, config.model)
+    const cached = await getCachedResponse<MemoGenerationResult>(cacheKey)
+    if (cached) return cached
+
+    // Build prompt with account context
+    const accountInfo = getAccountInfo(transaction.account_id, aiContext)
+    const accountLine = accountInfo
+      ? `Account: ${accountInfo.name}${accountInfo.userContext ? ` (${accountInfo.userContext})` : ''}`
+      : ''
+
+    const categoryName = aiContext.categories.list.find((c) => c.id === transaction.category_id)?.name ?? 'Uncategorized'
+
+    const { object } = await generateObject({
+      model,
+      schema: memoGenerationResultSchema,
+      schemaName: 'MemoGeneration',
+      schemaDescription: 'Generated memo for a YNAB transaction',
+      system: memoSystemPrompt,
+      prompt: `Generate a memo for this transaction:
+Payee: ${transaction.payee_name || 'Unknown'}
+Amount: ${amount < 0 ? `expense of $${Math.abs(amount).toFixed(2)}` : `income of $${amount.toFixed(2)}`}
+Category: ${categoryName}
+Date: ${transaction.date}
+${hasMemo ? `Current memo: ${transaction.memo}` : ''}
+${accountLine}`.trim(),
+      temperature: 0.4,
+    })
+
+    // Cache the result
+    await setCachedResponse(cacheKey, object)
+
+    return object
+  }
+
+  const generateMemoBatch = async (
+    transactions: TransactionDetail[],
+    forceReplace = false
+  ): Promise<Map<string, MemoGenerationResult>> => {
+    const results = new Map<string, MemoGenerationResult>()
+    const concurrency = 3
+
+    for (let i = 0; i < transactions.length; i += concurrency) {
+      const batch = transactions.slice(i, i + concurrency)
+      const batchResults = await Promise.all(
+        batch.map(async (tx) => {
+          try {
+            const result = await generateMemo(tx, forceReplace)
+            return result ? ([tx.id, result] as const) : null
+          } catch {
+            return null
+          }
+        })
+      )
+
+      for (const item of batchResults) {
+        if (item) results.set(item[0], item[1])
+      }
+    }
+
+    return results
+  }
+
+  return { categorize, categorizeBatch, generateMemo, generateMemoBatch }
 }

@@ -2,16 +2,21 @@ import React, { useState, useMemo } from 'react'
 import { Box, Text, useInput } from 'ink'
 import TextInput from 'ink-text-input'
 import { useAtomValue, useSetAtom } from 'jotai'
-import { transactionsAtom, categoryMapAtom } from './transaction-atoms.js'
+import { transactionsAtom, categoryMapAtom, categoryGroupsAtom, accountsAtom } from './transaction-atoms.js'
 import { goBackAtom } from '../navigation/navigation-atoms.js'
 import { CategoryPicker } from '../categories/CategoryPicker.js'
-import { formatAmount } from '../shared/ynab-client.js'
+import { flattenCategories, formatAmount, type YnabClient } from '../shared/ynab-client.js'
 import { KeyHints } from '../shared/components/KeyHints.js'
-import type { YnabClient } from '../shared/ynab-client.js'
+import { createCategorizer } from '../categorization/categorizer.js'
+import { buildPayeePatterns } from '../categorization/history-analyzer.js'
+import { buildAIContext } from '../shared/ai-context.js'
+import { getAllPayeeRules } from '../payees/payee-service.js'
+import type { AppConfig } from '../config/config-types.js'
 
 interface TransactionEditProps {
   transactionId: string
   ynabClient: YnabClient
+  config: AppConfig
 }
 
 type Field = 'payee' | 'memo' | 'category' | 'flag'
@@ -27,9 +32,11 @@ const FLAG_OPTIONS: { value: FlagColor; label: string }[] = [
   { value: 'purple', label: '🟣 Purple' },
 ]
 
-export const TransactionEdit = ({ transactionId, ynabClient }: TransactionEditProps) => {
+export const TransactionEdit = ({ transactionId, ynabClient, config }: TransactionEditProps) => {
   const transactions = useAtomValue(transactionsAtom)
   const categoryMap = useAtomValue(categoryMapAtom)
+  const categoryGroups = useAtomValue(categoryGroupsAtom)
+  const accounts = useAtomValue(accountsAtom)
   const goBack = useSetAtom(goBackAtom)
 
   const transaction = useMemo(
@@ -48,6 +55,7 @@ export const TransactionEdit = ({ transactionId, ynabClient }: TransactionEditPr
   const [currentField, setCurrentField] = useState<Field>('payee')
   const [showCategoryPicker, setShowCategoryPicker] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
+  const [isGeneratingMemo, setIsGeneratingMemo] = useState(false)
 
   const hasChanges =
     payee !== transaction?.payee_name ||
@@ -76,8 +84,45 @@ export const TransactionEdit = ({ transactionId, ynabClient }: TransactionEditPr
     }
   }
 
+  const generateMemoWithAI = async () => {
+    if (!transaction || isGeneratingMemo) return
+
+    setIsGeneratingMemo(true)
+    try {
+      const categories = flattenCategories(categoryGroups)
+      const patterns = buildPayeePatterns(transactions, categories)
+      const payeeRules = await getAllPayeeRules()
+
+      const aiContext = buildAIContext({
+        userContext: config.userContext,
+        accounts,
+        payeeRules,
+        categories,
+        historicalPatterns: patterns,
+      })
+
+      const categorizer = createCategorizer(
+        {
+          openRouterApiKey: config.ai.openRouterApiKey,
+          model: config.ai.model,
+        },
+        aiContext
+      )
+
+      const result = await categorizer.generateMemo(transaction, true)
+      if (result) {
+        setMemo(result.short)
+      }
+    } catch {
+      // Silently fail
+    } finally {
+      setIsGeneratingMemo(false)
+    }
+  }
+
   useInput((input, key) => {
     if (showCategoryPicker) return
+    if (isGeneratingMemo) return
 
     if (key.escape) {
       goBack()
@@ -86,6 +131,12 @@ export const TransactionEdit = ({ transactionId, ynabClient }: TransactionEditPr
 
     if (key.return && currentField !== 'category') {
       save()
+      return
+    }
+
+    // Generate memo with AI when on memo field
+    if (input === 'g' && currentField === 'memo') {
+      generateMemoWithAI()
       return
     }
 
@@ -166,8 +217,13 @@ export const TransactionEdit = ({ transactionId, ynabClient }: TransactionEditPr
           <Box width={12}>
             <Text bold>Memo:</Text>
           </Box>
-          {currentField === 'memo' ? (
-            <TextInput value={memo} onChange={setMemo} />
+          {isGeneratingMemo ? (
+            <Text color="cyan">Generating...</Text>
+          ) : currentField === 'memo' ? (
+            <>
+              <TextInput value={memo} onChange={setMemo} />
+              <Text dimColor> (g=AI)</Text>
+            </>
           ) : (
             <Text>{memo || <Text dimColor>empty</Text>}</Text>
           )}

@@ -27,6 +27,13 @@ export const categorizationResultSchema = z.object({
 
 export type CategorizationResult = z.infer<typeof categorizationResultSchema>
 
+export const memoGenerationResultSchema = z.object({
+  short: z.string().describe('Brief context note, 2-5 words'),
+  detailed: z.string().describe('More descriptive memo with context'),
+})
+
+export type MemoGenerationResult = z.infer<typeof memoGenerationResultSchema>
+
 export interface PayeePattern {
   payeeName: string
   normalizedName: string
